@@ -53,6 +53,11 @@ class LPHarmonicMean(StatDetail):
     short = StatText("hm", "hm")
 
 
+class LPContraharmonicMean(StatDetail):
+    name = StatText("Contraharmonic mean", "Kontraharmonisches Mittel")
+    short = StatText("chm", "chm")
+
+
 class LPMidrange(StatDetail):
     name = StatText("Midrange", "Durchschnitt von min und max")
     short = StatText("mr", "mr")
@@ -93,6 +98,21 @@ def calculate_harmonic_mean(data: NDArray[np.float64]):
     return LPHarmonicMean(len(data) / np.sum(1.0 / data))
 
 
+def contraharmonic_mean(data: NDArray[np.float64]):
+    """
+    Computes the contraharmonic mean of a dataset.
+    Formula: (Sum of x^2) / (Sum of x)
+    """
+    # Calculate sum of squares and sum of elements
+    sum_squares = np.sum(data**2)
+    sum_elements = np.sum(data)
+
+    if sum_elements == 0:
+        return LPContraharmonicMean(None)
+
+    return LPContraharmonicMean(sum_squares / sum_elements)
+
+
 def calculate_percentile_sorted(
     sorted_data: NDArray[np.float64], p: int
 ) -> LPPercentile:
@@ -127,5 +147,6 @@ def calculate_central_tendencies(sorted_data: NDArray[np.float64], trim: float):
         calculate_mode(sorted_data),
         calculate_geometric_mean(sorted_data),
         calculate_harmonic_mean(sorted_data),
+        contraharmonic_mean(sorted_data),
         calculate_trimmed_mean(sorted_data, trim),
     )

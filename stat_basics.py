@@ -49,9 +49,9 @@ class StatDetail(ABC):
         ]
         if missing:
             pass
-           # raise TypeError(
-           #     f"{cls.__name__} must define class attributes: {', '.join(missing)}"
-            #)
+        # raise TypeError(
+        #     f"{cls.__name__} must define class attributes: {', '.join(missing)}"
+        # )
 
     def __getattr__(self, _) -> Any:
         return self.value
@@ -74,21 +74,27 @@ class StatDetail(ABC):
     def __rmul__(self, other: Any) -> Any:
         return other * self.value
 
+    def __truediv__(self, other: Any) -> Any:
+        return self.value / other
+
+    def __rtruediv__(self, other: Any) -> Any:
+        return other / self.value
+
     def __add__(self, other: Any) -> Any:
         return self.value + other
-    
+
     def __radd__(self, other: Any) -> Any:
         return other + self.value
 
     def __sub__(self, other: Any) -> Any:
         return self.value - other
-    
+
     def __rsub__(self, other: Any) -> Any:
         return other - self.value
 
     def __lt__(self, other: Any) -> bool:
         return self.value < other
-    
+
     def __gt__(self, other: Any) -> bool:
         return self.value > other
 

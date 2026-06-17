@@ -36,7 +36,7 @@ from stats_outlier import (
     OutlierUpperWhisker,
 )
 from stats_types import calculate_integers, calculate_zero_values
-from stats_visualization import make_scatter
+from stats_visualization import display_data
 
 # ----------------------------
 # Core single-pass accumulator
@@ -101,12 +101,13 @@ class Welford:
 
 
 def describe(data: NDArray[np.float64], trim: float = 0.1):
-    x = np.asarray(data, dtype=np.float64)
-    if x.size == 0:
+    original_data = np.asarray(data, dtype=np.float64)
+    if original_data.size == 0:
         raise ValueError("Empty dataset")
 
     # Sort once (needed for percentiles + median + order stats)
-    sorted_data = np.sort(x)
+    sorted_data = np.sort(original_data)
+    count = DSCount(len(sorted_data))
 
     # Welford pass (mean, variance, skew, kurtosis, min/max)
     w = Welford()
@@ -128,20 +129,22 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     midhinge = LPMidhinge((q25 + q75) / 2)
     trimean = LPTrimean((q25 + 2 * median + q75) / 4)
 
-    mode, geometric_mean, harmonic_mean, trimmed_mean = calculate_central_tendencies(
-        sorted_data, trim
+    mode, geometric_mean, harmonic_mean, trimmed_mean, contraharmonic_mean = (
+        calculate_central_tendencies(sorted_data, trim)
     )
 
     # spread
-    count = DSCount(len(sorted_data))
+
     variance, standard_deviation, skew, kurt = w.finalize()
     inter_quantile_range = DSInterQuantileRange(q75 - q25)
     minimum = DSMinimum(w.min)
     maximum = DSMaximum(w.max)
     range = DSRange(w.max - w.min)
-    median_absolute_deviation = calculate_median_absolute_deviation(sorted_data, median)
+    median_absolute_deviation = calculate_median_absolute_deviation(
+        sorted_data, median.value
+    )
     average_absolute_deviation = calculate_average_absolute_deviation(
-        sorted_data, arithmetic_mean
+        sorted_data, arithmetic_mean.value
     )
 
     # Outlier detection
@@ -157,8 +160,9 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     outlier_top_mean = OutlierTopMean(np.mean(top_outliers))
     outlier_top_median = OutlierTopMedian(np.median(top_outliers))
 
-    data_without_outliers = data[(lower_whisker < data) & (data < upper_whisker)]
-    make_scatter(data, data_without_outliers, top_outliers[top_outliers < upper_whisker * 2])
+    data_without_outliers = original_data[
+        (lower_whisker.value < original_data) & (original_data < upper_whisker.value)
+    ]
 
     # types
     types_total_integers, types_relative_integers = calculate_integers(sorted_data)
@@ -192,14 +196,15 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     print_stats(f"{q25.get_detail_string()}")
     print_stats(f"{median.get_detail_string()}")
 
-    print_stats(f"{arithmetic_mean.get_detail_string()}")
+    print_stats(f"{harmonic_mean.get_detail_string()}")
+    print_stats(f"{geometric_mean.get_detail_string()}")
     print_stats(f"{trimmed_mean.get_detail_string()}")
+    print_stats(f"{arithmetic_mean.get_detail_string()}")
+    print_stats(f"{contraharmonic_mean.get_detail_string()}")
     print_stats(f"{midrange.get_detail_string()}")
     print_stats(f"{midhinge.get_detail_string()}")
     print_stats(f"{trimean.get_detail_string()}")
     print_stats(f"{mode.get_detail_string()}")
-    print_stats(f"{geometric_mean.get_detail_string()}")
-    print_stats(f"{harmonic_mean.get_detail_string()}")
 
     print_stats(f"{q75.get_detail_string()}")
     print_stats(f"{q95.get_detail_string()}")
@@ -233,12 +238,32 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
         f"{kurt.get_detail_string()} ({('steilgipflig' if kurt > 0 else 'flachgipflig')})"
     )
 
+    display_data(
+        original_data,
+        data_without_outliers,
+        sorted_data[
+            (
+                ((lower_whisker.value - (lower_whisker.value * 1.5)) < sorted_data)
+                & (sorted_data < lower_whisker.value)
+            )
+            | (
+                (upper_whisker.value < sorted_data)
+                & (sorted_data < upper_whisker.value * 1.5)
+            )
+        ],
+    )
+
 
 def print_stats(data: Any):
     print(data)
 
 
+import random
+
 if __name__ == "__main__":
     data: NDArray[np.float64] = [1, 5, 7, -5, 5.11245, 100, -54, 0, 1.0, -10.01, 0]
+    data: NDArray[np.float64] = [
+        random.random() * random.randint(-100, 100) for _ in range(1000)
+    ]
     data: NDArray[np.float64] = np.loadtxt("data.txt", delimiter=",")
     describe(data)
