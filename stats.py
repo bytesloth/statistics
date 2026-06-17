@@ -1,6 +1,7 @@
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from stat_basics import format_percentage
 from stats_location_parameter import (
@@ -35,6 +36,7 @@ from stats_outlier import (
     OutlierUpperWhisker,
 )
 from stats_types import calculate_integers, calculate_zero_values
+from stats_visualization import make_scatter
 
 # ----------------------------
 # Core single-pass accumulator
@@ -98,7 +100,7 @@ class Welford:
         )
 
 
-def describe(data: list[float], trim: float = 0.1):
+def describe(data: NDArray[np.float64], trim: float = 0.1):
     x = np.asarray(data, dtype=np.float64)
     if x.size == 0:
         raise ValueError("Empty dataset")
@@ -154,6 +156,9 @@ def describe(data: list[float], trim: float = 0.1):
     outlier_top_count = OutlierTopCount(len(top_outliers))
     outlier_top_mean = OutlierTopMean(np.mean(top_outliers))
     outlier_top_median = OutlierTopMedian(np.median(top_outliers))
+
+    data_without_outliers = data[(lower_whisker < data) & (data < upper_whisker)]
+    make_scatter(data, data_without_outliers, top_outliers[top_outliers < upper_whisker * 2])
 
     # types
     types_total_integers, types_relative_integers = calculate_integers(sorted_data)
@@ -234,5 +239,6 @@ def print_stats(data: Any):
 
 
 if __name__ == "__main__":
-    data: list[float] = [1, 5, 7, -5, 5.11245, 100, -54, 0, 1.0, -10.01, 0]
+    data: NDArray[np.float64] = [1, 5, 7, -5, 5.11245, 100, -54, 0, 1.0, -10.01, 0]
+    data: NDArray[np.float64] = np.loadtxt("data.txt", delimiter=",")
     describe(data)
