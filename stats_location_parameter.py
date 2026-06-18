@@ -98,7 +98,7 @@ def calculate_harmonic_mean(data: NDArray[np.float64]):
     return LPHarmonicMean(len(data) / np.sum(1.0 / data))
 
 
-def contraharmonic_mean(data: NDArray[np.float64]):
+def calculate_contraharmonic_mean(data: NDArray[np.float64]):
     """
     Computes the contraharmonic mean of a dataset.
     Formula: (Sum of x^2) / (Sum of x)
@@ -147,6 +147,6 @@ def calculate_central_tendencies(sorted_data: NDArray[np.float64], trim: float):
         calculate_mode(sorted_data),
         calculate_geometric_mean(sorted_data),
         calculate_harmonic_mean(sorted_data),
-        contraharmonic_mean(sorted_data),
+        calculate_contraharmonic_mean(sorted_data),
         calculate_trimmed_mean(sorted_data, trim),
     )

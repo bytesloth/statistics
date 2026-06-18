@@ -129,7 +129,7 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     midhinge = LPMidhinge((q25 + q75) / 2)
     trimean = LPTrimean((q25 + 2 * median + q75) / 4)
 
-    mode, geometric_mean, harmonic_mean, trimmed_mean, contraharmonic_mean = (
+    mode, geometric_mean, harmonic_mean, contraharmonic_mean, trimmed_mean = (
         calculate_central_tendencies(sorted_data, trim)
     )
 
@@ -194,16 +194,16 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     print_stats(f"{q1.get_detail_string()}")
     print_stats(f"{q5.get_detail_string()}")
     print_stats(f"{q25.get_detail_string()}")
-    print_stats(f"{median.get_detail_string()}")
 
     print_stats(f"{harmonic_mean.get_detail_string()}")
     print_stats(f"{geometric_mean.get_detail_string()}")
     print_stats(f"{trimmed_mean.get_detail_string()}")
+    print_stats(f"{median.get_detail_string()}")
+    print_stats(f"{midhinge.get_detail_string()}")
+    print_stats(f"{trimean.get_detail_string()}")
     print_stats(f"{arithmetic_mean.get_detail_string()}")
     print_stats(f"{contraharmonic_mean.get_detail_string()}")
     print_stats(f"{midrange.get_detail_string()}")
-    print_stats(f"{midhinge.get_detail_string()}")
-    print_stats(f"{trimean.get_detail_string()}")
     print_stats(f"{mode.get_detail_string()}")
 
     print_stats(f"{q75.get_detail_string()}")
