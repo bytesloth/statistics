@@ -1,20 +1,20 @@
-from typing import Any
+import argparse
 
 import numpy as np
 from numpy.typing import NDArray
 
-from stat_basics import format_percentage
+from stat_basics import StatGroup, StatText, StatsTableCollector
 from stats_location_parameter import (
     LPArithmeticMean,
     LPMidhinge,
     LPMidrange,
+    LPPercentile,
     LPTrimean,
     calculate_central_tendencies,
     calculate_percentile_sorted,
 )
 from stats_data_spread import (
     DSCount,
-    DSInterQuantileRange,
     DSKurtosis,
     DSMaximum,
     DSMinimum,
@@ -29,14 +29,14 @@ from stats_outlier import (
     OutlierBottomCount,
     OutlierBottomMean,
     OutlierBottomMedian,
-    OutlierLowerWhisker,
+    OutlierStatsCollection,
     OutlierTopCount,
     OutlierTopMean,
     OutlierTopMedian,
-    OutlierUpperWhisker,
+    calculate_outlier_stats,
 )
 from stats_types import calculate_integers, calculate_zero_values
-from stats_visualization import display_data
+from stats_visualization import display_data_single_figure
 
 # ----------------------------
 # Core single-pass accumulator
@@ -100,13 +100,14 @@ class Welford:
         )
 
 
-def describe(data: NDArray[np.float64], trim: float = 0.1):
-    original_data = np.asarray(data, dtype=np.float64)
-    if original_data.size == 0:
-        raise ValueError("Empty dataset")
+def describe(
+    sorted_data: NDArray[np.float64],
+    outlier_stats_collection: OutlierStatsCollection,
+    stats_table_collector: StatsTableCollector,
+    column_name: str,
+    trim: float = 0.1,
+):
 
-    # Sort once (needed for percentiles + median + order stats)
-    sorted_data = np.sort(original_data)
     count = DSCount(len(sorted_data))
 
     # Welford pass (mean, variance, skew, kurtosis, min/max)
@@ -115,14 +116,14 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
         w.update(v)
 
     # central tendencies
-    q1 = calculate_percentile_sorted(sorted_data, 1)
-    q5 = calculate_percentile_sorted(sorted_data, 5)
-    q25 = calculate_percentile_sorted(sorted_data, 25)
-    median = calculate_percentile_sorted(sorted_data, 50)
-    arithmetic_mean = LPArithmeticMean(w.mean)
-    q75 = calculate_percentile_sorted(sorted_data, 75)
-    q95 = calculate_percentile_sorted(sorted_data, 95)
-    q99 = calculate_percentile_sorted(sorted_data, 99)
+    q1: LPPercentile = calculate_percentile_sorted(sorted_data, 1)
+    q5: LPPercentile = calculate_percentile_sorted(sorted_data, 5)
+    q25: LPPercentile = outlier_stats_collection.q25
+    median: LPPercentile = calculate_percentile_sorted(sorted_data, 50)
+    arithmetic_mean: LPArithmeticMean = LPArithmeticMean(w.mean)
+    q75: LPPercentile = outlier_stats_collection.q75
+    q95: LPPercentile = calculate_percentile_sorted(sorted_data, 95)
+    q99: LPPercentile = calculate_percentile_sorted(sorted_data, 99)
 
     # Center robust metrics
     midrange = LPMidrange((w.min + w.max) / 2)
@@ -134,9 +135,8 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     )
 
     # spread
-
     variance, standard_deviation, skew, kurt = w.finalize()
-    inter_quantile_range = DSInterQuantileRange(q75 - q25)
+    inter_quantile_range = outlier_stats_collection.interquartile_range
     minimum = DSMinimum(w.min)
     maximum = DSMaximum(w.max)
     range = DSRange(w.max - w.min)
@@ -148,21 +148,25 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
     )
 
     # Outlier detection
-    lower_whisker = OutlierLowerWhisker(q25 - 1.5 * inter_quantile_range)
-    upper_whisker = OutlierUpperWhisker(q75 + 1.5 * inter_quantile_range)
+    lower_whisker = outlier_stats_collection.lower_whisker
+    upper_whisker = outlier_stats_collection.upper_whisker
     bottom_outliers = sorted_data[(sorted_data < lower_whisker.value)]
     outlier_bottom_count = OutlierBottomCount(len(bottom_outliers))
-    outlier_bottom_mean = OutlierBottomMean(np.mean(bottom_outliers))
-    outlier_bottom_median = OutlierBottomMedian(np.median(bottom_outliers))
+    outlier_bottom_mean = OutlierBottomMean(
+        np.mean(bottom_outliers) if bottom_outliers.size else np.nan
+    )
+    outlier_bottom_median = OutlierBottomMedian(
+        np.median(bottom_outliers) if bottom_outliers.size else np.nan
+    )
 
     top_outliers = sorted_data[(sorted_data > upper_whisker.value)]
     outlier_top_count = OutlierTopCount(len(top_outliers))
-    outlier_top_mean = OutlierTopMean(np.mean(top_outliers))
-    outlier_top_median = OutlierTopMedian(np.median(top_outliers))
-
-    data_without_outliers = original_data[
-        (lower_whisker.value < original_data) & (original_data < upper_whisker.value)
-    ]
+    outlier_top_mean = OutlierTopMean(
+        np.mean(top_outliers) if top_outliers.size else np.nan
+    )
+    outlier_top_median = OutlierTopMedian(
+        np.median(top_outliers) if top_outliers.size else np.nan
+    )
 
     # types
     types_total_integers, types_relative_integers = calculate_integers(sorted_data)
@@ -175,95 +179,199 @@ def describe(data: NDArray[np.float64], trim: float = 0.1):
         types_relative_more_than_zero,
     ) = calculate_zero_values(sorted_data)
 
-    print_stats(f"{count.get_detail_string()}")
-    print_stats(
-        f"{types_total_integers.get_detail_string()} ({format_percentage(types_relative_integers)}%)"
-    )
-    print_stats(
-        f"{types_total_less_than_zero.get_detail_string()} ({format_percentage(types_relative_less_than_zero)}%)"
-    )
-    print_stats(
-        f"{types_total_zero.get_detail_string()} ({format_percentage(types_relative_zero)}%)"
-    )
-    print_stats(
-        f"{types_total_more_than_zero.get_detail_string()} ({format_percentage(types_relative_more_than_zero)}%)"
-    )
-    print_stats("")
-    print_stats(f"{minimum.get_detail_string()}")
-    print_stats(f"{lower_whisker.get_detail_string()}")
-    print_stats(f"{q1.get_detail_string()}")
-    print_stats(f"{q5.get_detail_string()}")
-    print_stats(f"{q25.get_detail_string()}")
+    stats_table_collector.add_column(column_name)
+    stats_table_collector.add_stat_row(StatGroup(StatText("Types", "Typen")))
+    stats_table_collector.add_stat_row(count)
+    stats_table_collector.add_stat_row(types_total_integers)
+    stats_table_collector.add_stat_row(types_relative_integers)
+    stats_table_collector.add_stat_row(types_total_less_than_zero)
+    stats_table_collector.add_stat_row(types_relative_less_than_zero)
+    stats_table_collector.add_stat_row(types_total_zero)
+    stats_table_collector.add_stat_row(types_relative_zero)
+    stats_table_collector.add_stat_row(types_total_more_than_zero)
+    stats_table_collector.add_stat_row(types_relative_more_than_zero)
 
-    print_stats(f"{harmonic_mean.get_detail_string()}")
-    print_stats(f"{geometric_mean.get_detail_string()}")
-    print_stats(f"{trimmed_mean.get_detail_string()}")
-    print_stats(f"{median.get_detail_string()}")
-    print_stats(f"{midhinge.get_detail_string()}")
-    print_stats(f"{trimean.get_detail_string()}")
-    print_stats(f"{arithmetic_mean.get_detail_string()}")
-    print_stats(f"{contraharmonic_mean.get_detail_string()}")
-    print_stats(f"{midrange.get_detail_string()}")
-    print_stats(f"{mode.get_detail_string()}")
-
-    print_stats(f"{q75.get_detail_string()}")
-    print_stats(f"{q95.get_detail_string()}")
-    print_stats(f"{q99.get_detail_string()}")
-    print_stats(f"{upper_whisker.get_detail_string()}")
-    print_stats(f"{maximum.get_detail_string()}")
-
-    print_stats("")
-    print_stats(f"Bottom Outliers: {bottom_outliers}")
-    print_stats(f"{outlier_bottom_count.get_detail_string()}")
-    print_stats(f"{outlier_bottom_mean.get_detail_string()}")
-    print_stats(f"{outlier_bottom_median.get_detail_string()}")
-
-    print_stats(f"Top Outliers: {top_outliers}")
-    print_stats(f"{outlier_top_count.get_detail_string()}")
-    print_stats(f"{outlier_top_mean.get_detail_string()}")
-    print_stats(f"{outlier_top_median.get_detail_string()}")
-
-    print_stats("")
-    print_stats(f"{range.get_detail_string()}")
-    print_stats(f"{inter_quantile_range.get_detail_string()}")
-    print_stats(f"{standard_deviation.get_detail_string()}")
-    print_stats(f"{variance.get_detail_string()}")
-    print_stats(f"{median_absolute_deviation.get_detail_string()}")
-    print_stats(f"{average_absolute_deviation.get_detail_string()}")
-    # TODO
-    print_stats(
-        f"{skew.get_detail_string()} ({('right tail is longer' if skew > 0 else 'left tail is longer')})"
+    stats_table_collector.add_stat_row(
+        StatGroup(StatText("Central tendencies", "Lageparameter"))
     )
-    print_stats(
-        f"{kurt.get_detail_string()} ({('steilgipflig' if kurt > 0 else 'flachgipflig')})"
-    )
+    stats_table_collector.add_stat_row(minimum)
+    stats_table_collector.add_stat_row(lower_whisker)
+    stats_table_collector.add_stat_row(q1)
+    stats_table_collector.add_stat_row(q5)
+    stats_table_collector.add_stat_row(q25)
 
-    display_data(
-        original_data,
-        data_without_outliers,
-        sorted_data[
-            (
-                ((lower_whisker.value - (lower_whisker.value * 1.5)) < sorted_data)
-                & (sorted_data < lower_whisker.value)
+    stats_table_collector.add_stat_row(StatGroup(StatText("Averages", "Durchschnitte")))
+    stats_table_collector.add_stat_row(harmonic_mean)
+    stats_table_collector.add_stat_row(geometric_mean)
+    stats_table_collector.add_stat_row(trimmed_mean)
+    stats_table_collector.add_stat_row(median)
+    stats_table_collector.add_stat_row(midhinge)
+    stats_table_collector.add_stat_row(trimean)
+    stats_table_collector.add_stat_row(arithmetic_mean)
+    stats_table_collector.add_stat_row(contraharmonic_mean)
+    stats_table_collector.add_stat_row(midrange)
+    # stats_table_collector.add_stat_row(mode)
+
+    stats_table_collector.add_stat_row(
+        StatGroup(StatText("Central tendencies2", "Lageparameter2"))
+    )
+    stats_table_collector.add_stat_row(q75)
+    stats_table_collector.add_stat_row(q95)
+    stats_table_collector.add_stat_row(q99)
+    stats_table_collector.add_stat_row(upper_whisker)
+    stats_table_collector.add_stat_row(maximum)
+
+    stats_table_collector.add_stat_row(
+        StatGroup(StatText("Measures of Dispersion", "Streuungsmaße"))
+    )
+    stats_table_collector.add_stat_row(range)
+    stats_table_collector.add_stat_row(inter_quantile_range)
+    stats_table_collector.add_stat_row(standard_deviation)
+    stats_table_collector.add_stat_row(variance)
+    stats_table_collector.add_stat_row(median_absolute_deviation)
+    stats_table_collector.add_stat_row(average_absolute_deviation)
+    stats_table_collector.add_stat_row(skew)
+    stats_table_collector.add_stat_row(kurt)
+
+    stats_table_collector.add_stat_row(StatGroup(StatText("Outliers", "Ausreißer")))
+    stats_table_collector.add_stat_row(outlier_bottom_count)
+    stats_table_collector.add_stat_row(outlier_bottom_mean)
+    stats_table_collector.add_stat_row(outlier_bottom_median)
+    stats_table_collector.add_stat_row(outlier_top_count)
+    stats_table_collector.add_stat_row(outlier_top_mean)
+    stats_table_collector.add_stat_row(outlier_top_median)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Statistics collector and visualizer for multiple datasets."
+    )
+    parser.add_argument(
+        "--group-by",
+        choices=["separate", "dataset", "category", "all"],
+        default="category",
+        help=(
+            "separate: one image for each dataset/category combination; "
+            "dataset: one image per dataset with all categories combined; "
+            "category: one figure per category comparing all datasets within that category; "
+            "all: one image with all datasets and all categories combined;"
+        ),
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    group_by = args.group_by
+
+    file_names = ["man.txt", "woman.txt"]
+    stats_table_collector = StatsTableCollector()
+    dataset_groups: dict[str, dict[str, np.ndarray]] = {}
+
+    for file_name in file_names:
+        data = np.asarray(np.loadtxt(file_name, delimiter=","), dtype=np.float64)
+        original_data = np.asarray(data, dtype=np.float64)
+        if original_data.size == 0:
+            raise ValueError("Empty dataset")
+
+        # Sort once (needed for percentiles + median + order stats)
+        sorted_data = np.sort(original_data)
+        original_outlier_stats_collection = process_data(
+            sorted_data, stats_table_collector, f"Orig_{file_name}"
+        )
+
+        data_without_outliers = sorted_data[
+            (original_outlier_stats_collection.lower_whisker.value < sorted_data)
+            & (sorted_data < original_outlier_stats_collection.upper_whisker.value)
+        ]
+        process_data(
+            data_without_outliers,
+            stats_table_collector,
+            f"-Aus_{file_name}",
+        )
+
+        outliers = sorted_data[
+            (sorted_data < original_outlier_stats_collection.lower_whisker.value)
+            | (original_outlier_stats_collection.upper_whisker.value < sorted_data)
+        ]
+        process_data(outliers, stats_table_collector, f"Aus_{file_name}")
+
+        dataset_label = file_name.replace(".txt", "")
+        original_data_without_outliers = original_data[
+            (original_outlier_stats_collection.lower_whisker.value < original_data)
+            & (original_data < original_outlier_stats_collection.upper_whisker.value)
+        ]
+        original_outliers = original_data[
+            (original_data < original_outlier_stats_collection.lower_whisker.value)
+            | (original_outlier_stats_collection.upper_whisker.value < original_data)
+        ]
+        dataset_groups[dataset_label] = {
+            "original": original_data,
+            "without_outliers": original_data_without_outliers,
+            "outliers": original_outliers,
+        }
+
+    if group_by == "category" and dataset_groups:
+        for category in ["original", "without_outliers", "outliers"]:
+            display_data_single_figure(
+                {
+                    dataset_label: {category: dataset_groups[dataset_label][category]}
+                    for dataset_label in dataset_groups
+                },
+                image_name=f"summary_{category}",
+                title=f"{category} comparison",
+                group_by="dataset",
             )
-            | (
-                (upper_whisker.value < sorted_data)
-                & (sorted_data < upper_whisker.value * 1.5)
+
+    if group_by == "separate" and dataset_groups:
+        for dataset_label in dataset_groups:
+            for category in ["original", "without_outliers", "outliers"]:
+                display_data_single_figure(
+                    {
+                        dataset_label: {
+                            category: dataset_groups[dataset_label][category]
+                        }
+                    },
+                    image_name=f"summary_{dataset_label}_{category}",
+                    title=f"{dataset_label} - {category}",
+                    group_by="dataset",
+                )
+
+    if group_by == "dataset" and dataset_groups:
+        for dataset_label in dataset_groups:
+            display_data_single_figure(
+                {dataset_label: dataset_groups[dataset_label]},
+                image_name=f"summary_{dataset_label}",
+                title=f"{dataset_label}",
+                group_by="category",
             )
-        ],
+
+    if group_by == "all" and dataset_groups:
+        display_data_single_figure(
+            dataset_groups,
+            image_name="summary_all_datasets",
+            title="All datasets",
+            group_by="category",
+        )
+
+    stats_table_collector.print_table()
+
+
+def process_data(
+    sorted_data: np.ndarray,
+    stats_table_collector: StatsTableCollector,
+    data_name: str,
+):
+    outlier_stats_collection = calculate_outlier_stats(sorted_data)
+    describe(
+        sorted_data,
+        outlier_stats_collection,
+        stats_table_collector,
+        data_name,
     )
 
+    return outlier_stats_collection
 
-def print_stats(data: Any):
-    print(data)
-
-
-import random
 
 if __name__ == "__main__":
-    data: NDArray[np.float64] = [1, 5, 7, -5, 5.11245, 100, -54, 0, 1.0, -10.01, 0]
-    data: NDArray[np.float64] = [
-        random.random() * random.randint(-100, 100) for _ in range(1000)
-    ]
-    data: NDArray[np.float64] = np.loadtxt("data.txt", delimiter=",")
-    describe(data)
+    main()

@@ -60,6 +60,9 @@ class DSSkewness(StatDetail):
         "Maß für die Asymmetrie einer (eingipfligen) Wahrscheinlichkeitsfunktion, statistischen Dichtefunktion",
     )
 
+    def get_detail_string(self) -> str:
+        return f"{self.get_name() + ":":<30} {self.get_short():<4} = {self.value} ({('right tail is longer' if self.value > 0 else 'left tail is longer')})"
+
 
 class DSKurtosis(StatDetail):
     name = StatText("Kurtosis", "Wölbung")
@@ -68,6 +71,9 @@ class DSKurtosis(StatDetail):
         "Refers to the degree of tailedness in the probability distribution",
         'Steilheit bzw. "Spitzigkeit" einer (eingipfligen) Wahrscheinlichkeitsfunktion, statistischen Dichtefunktion',
     )
+
+    def get_detail_string(self) -> str:
+        return f"{self.get_name() + ":":<30} {self.get_short():<4} = {self.value} ({('steilgipflig' if self.value > 0 else 'flachgipflig')})"
 
 
 def calculate_median_absolute_deviation(data: NDArray[np.float64], median: float):
