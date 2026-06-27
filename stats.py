@@ -205,8 +205,8 @@ def describe(
     stats_table_collector.add_stat_row(geometric_mean)
     stats_table_collector.add_stat_row(trimmed_mean)
     stats_table_collector.add_stat_row(median)
-    stats_table_collector.add_stat_row(midhinge)
     stats_table_collector.add_stat_row(trimean)
+    stats_table_collector.add_stat_row(midhinge)
     stats_table_collector.add_stat_row(arithmetic_mean)
     stats_table_collector.add_stat_row(contraharmonic_mean)
     stats_table_collector.add_stat_row(midrange)
@@ -257,14 +257,15 @@ def parse_args():
             "all: one image with all datasets and all categories combined;"
         ),
     )
+    parser.add_argument("file_names", nargs="+", help="Input files")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     group_by = args.group_by
+    file_names = args.file_names
 
-    file_names = ["man.txt", "woman.txt"]
     stats_table_collector = StatsTableCollector()
     dataset_groups: dict[str, dict[str, np.ndarray]] = {}
 
